@@ -5,7 +5,7 @@
 
     The files are organized as sets of Anims that contain
     animation info. Anims reference outside images,
-    primarily sprite sheets but could also  achieve
+    primarily sprite sheets but could also achieve
     animations with individual images if desired.
 
     Files are stored in XML format, to keep the files easy
@@ -66,10 +66,7 @@ namespace AnimizerApi {
             if (!filename.EndsWith(".animset"))
                 filename += ".animset";
 
-            string relativeFile = GetRelativePath(
-                Path.Combine(path, filename), Environment.CurrentDirectory);
-
-            XmlWriter writer = XmlWriter.Create(relativeFile,
+            XmlWriter writer = XmlWriter.Create(Path.Combine(path, filename),
                 new XmlWriterSettings {
                     Indent = true,
                     IndentChars = "  "
@@ -97,7 +94,8 @@ namespace AnimizerApi {
 
                     writer.WriteStartElement("image");
                     writer.WriteAttributeString("id", index.ToString());
-                    writer.WriteAttributeString("source", frame.image);
+                    writer.WriteAttributeString("source", 
+                        GetRelativePath(frame.image, path));
                     writer.WriteEndElement();
                 }
             }
@@ -146,24 +144,26 @@ namespace AnimizerApi {
                 string path, string filename) {
 
             Dictionary<string, Anim> output = new Dictionary<string, Anim>();
-
-            XmlReader reader = XmlReader.Create(Path.Combine(path, filename));
-
             Dictionary<int, string> images = new Dictionary<int, string>();
             
-            //reader.MoveToContent();
-            //reader.Read();
-
             string thisAnim = "";
-            Anim thisAnimObj = new Anim(); // have to assign value, how wasteful
+            Anim thisAnimObj = new Anim();
+
+            XmlReader reader = XmlReader.Create(Path.Combine(path, filename));
 
             while (reader.Read()) {
                 if (reader.NodeType == XmlNodeType.Element) {
                     switch (reader.Name) {
                         case "image":
-                            images.Add(int.Parse(reader.GetAttribute("id")), reader.GetAttribute("source"));
+                            // Turn relative path into absolute and add
+                            Uri imageUri = new Uri(Path.Combine(path,
+                                reader.GetAttribute("source")));
+                            images.Add(
+                                int.Parse(reader.GetAttribute("id")), 
+                                Path.GetFullPath(imageUri.LocalPath));
                             break;
                         case "anim":
+                            // Create new Anim. Next several elements are going to be frames.
                             thisAnim = reader.GetAttribute("id");
                             thisAnimObj = new Anim();
                             thisAnimObj.id = thisAnim;
@@ -172,24 +172,20 @@ namespace AnimizerApi {
                         case "frame":
                             if (thisAnim == "")
                                 throw new XmlException("XML element out of order!");
+
                             string[] center = reader.GetAttribute("center").Split(',');
-                            int centerX = int.Parse(center[0]);
-                            int centerY = int.Parse(center[1]);
                             string[] size = reader.GetAttribute("size").Split(',');
-                            int sizeX = int.Parse(size[0]);
-                            int sizeY = int.Parse(size[1]);
-                            int timeFrames = int.Parse(reader.GetAttribute("timeFrames"));
-                            int timeRate = int.Parse(reader.GetAttribute("timeRate"));
-                            int imageId = int.Parse(reader.GetAttribute("imageid"));
+
                             AnimFrame frame = new AnimFrame() {
-                                centerX = centerX,
-                                centerY = centerY,
-                                sizeX = sizeX,
-                                sizeY = sizeY,
-                                timeFrames = timeFrames,
-                                timeRate = timeRate,
-                                image = images[imageId]
+                                centerX = int.Parse(center[0]),
+                                centerY = int.Parse(center[1]),
+                                sizeX = int.Parse(size[0]),
+                                sizeY = int.Parse(size[1]),
+                                timeFrames = int.Parse(reader.GetAttribute("timeFrames")),
+                                timeRate = int.Parse(reader.GetAttribute("timeRate")),
+                                image = images[int.Parse(reader.GetAttribute("imageid"))]
                             };
+
                             thisAnimObj.frames.Add(frame);
                             break;
                     }
@@ -212,8 +208,7 @@ namespace AnimizerApi {
         /// Formats a relative path for a specified file,
         /// with respect to a given directory.
         /// </summary>
-        public static string GetRelativePath(string filespec, string folder)
-        {
+        public static string GetRelativePath(string filespec, string folder) {
             Uri pathUri = new Uri(filespec);
 
             // Folders must end in a slash
